@@ -44,11 +44,11 @@ Then, we need to specify probabilities and conditional probabilities.
 dag1 <- empty.graph(nodes = c("Fuse","Plea","Atti","Comm"))
 
 # Add the arcs that encode the direct dependencies between variables
-dag1 <- set.arc (dag, from = "Fuse", to = "Atti")
-dag1 <- set.arc (dag, from = "Plea", to = "Atti")
-dag1 <- set.arc (dag, from = "Fuse", to = "Comm")
-dag1 <- set.arc (dag, from = "Plea", to = "Comm")
-dag1 <- set.arc (dag, from = "Atti", to = "Comm")
+dag1 <- set.arc (dag1, from = "Fuse", to = "Atti")
+dag1 <- set.arc (dag1, from = "Plea", to = "Atti")
+dag1 <- set.arc (dag1, from = "Fuse", to = "Comm")
+dag1 <- set.arc (dag1, from = "Plea", to = "Comm")
+dag1 <- set.arc (dag1, from = "Atti", to = "Comm")
 
 # Visualize DAG
 plot(dag1)
