@@ -17,8 +17,8 @@ library(gRain)
 library(gRbase)
 library (caTools)
 library(poLCA)
-retention <- read.csv("../Code/Data/retention.csv", header = T, colClasses = "factor" )
-retention_test <- read.csv("../Code/Data/retention_test.csv", header = T, colClasses = "factor" )
+retention <- read.csv("data/retention.csv", header = T, colClasses = "factor" )
+retention_test <- read.csv("data/retention_test.csv", header = T, colClasses = "factor" )
 
 ```
 
@@ -141,6 +141,16 @@ Comm.prob <- array (c(0.00, 1.00, 0.00,
                     dim = c (3, 3, 3, 3), 
                     dimnames= list(Comm = Comm.lv,  Atti = Atti.lv, Plea = Plea.lv, Fuse = Fuse.lv))
 Comm.prob
+# Interpreting the first conditional probability table:
+# , , Plea = Low, Fuse = Low
+#
+#       Atti
+# Comm   Low  Med High
+#   Low    0 0.34 0.34
+#   Med    1 0.33 0.33
+#   High   0 0.33 0.33
+
+# Given that Plea, Fuse is low, the probability Comm is medium given that Atti is low is 1
 ```
 ### Build model
 
@@ -152,10 +162,12 @@ cpt <- list(Fuse = Fuse.prob,
             Comm = Comm.prob)
 
 #  Relate the DAG and CPT and define a fully-specified Bayesian Network
-bn <- custom.fit(dag, cpt)
+bn <- custom.fit(dag1, cpt)
 
 # Print model
 bn
+
+# Fuse and Plea is independent variables and therefore not influenced by other variables. (Simple CPTs)
 ```
 
 ## Learn from data
@@ -172,13 +184,14 @@ Here, we can choose between different algorithms:
 - Fast Incremental Association (fast.iamb)
 - Interleaved Incremental Association (inter.iamb)
 
-We can also use pass different values to the "test" argument:
+We can also use pass different statistics to the "test" argument:
 - test = "x2"
 - test = "mi"
 
 Does it matter? Idk
 
 ```{r}
+# We estimate the structure of the model using the four approaches
 bn.gs <- gs(retention, alpha = 0.05, test ="x2")
 bn.iamb <- iamb(retention, alpha = 0.05, test ="x2")
 bn.fast.iamb <- fast.iamb (retention, alpha = 0.05, test ="mi")
@@ -231,6 +244,8 @@ graphviz.plot(bn.hc, main = "Hill Climbing - BIC")
 ### Fit model
 
 ```{r}
+# We previously tested four algorithms for estimating the structure of the model. After picking one of them
+# we proceed to estimate the probabilities and fit them to the model.
 bn.mle <- bn.fit (bn.gs1, data = retention, method = "mle")
 bn.mle
 
@@ -247,7 +262,9 @@ bn.mle$Comm
 bn.gs2 <- drop.arc(bn.gs1, from="Atti", to="Comm")
 plot(bn.gs2)
 
-# Test for the conditional independence between variables 
+# Test for the conditional independence between variables. In this case we test if there is 
+# a significant influence from atti to comm given we control for the influence of fuse and plea.
+# If the P-value is < 0.05, Atti do influence Comm even if we control for Fuse + Plea.
 graphviz.plot(bn.gs1)
 ci.test("Atti", "Comm", c("Fuse", "Plea"), test = "x2", data = retention)
 
@@ -268,11 +285,13 @@ bn.mle
 ## Model sensitivity
 
 ```{r}
+# Test if there is a relation between variables. (If there is an arrow in the structure)
 dsep(bn.mle, x = "Plea", y = "Fuse")
 dsep(bn.mle, x = "Plea", y = "Comm")
 ```
 
 ## Arc strength
+How significant is the relation between two variables?
 
 a) with criterion ="x2" or "mi", the output reports the p-value for the test. 
    The lower the p-value, the stronger the relationship. 
@@ -306,7 +325,7 @@ arc.strength (bn.gs1, retention, criterion = "bic") %>%.[order(.$strength),]
 ## Model comparison
 
 BIC, BDe, AIC scores are used to compare alternative structures and choose the best  
-In bnlearn, AIC, BIC, BDE closer to zero means better model; often the three indexes
+In bnlearn, AIC, BIC, BDE the lower the score, the better the model; often the three indexes
 do not agree.
 
 ```{r}
@@ -317,6 +336,10 @@ bnlearn::score (bn.hc, retention, type = "aic")
 # BIC
 bnlearn::score (bn.gs1, retention, type = "bic")
 bnlearn::score (bn.hc, retention, type = "bic")
+
+# BDE
+bnlearn::score (bn.gs1, retention, type = "bde")
+bnlearn::score (bn.hc, retention, type = "bde")
 ```
 
 # Predictive accuracy
@@ -331,7 +354,8 @@ In a similar way one can assess each individual variable.
 
 ```{r}
 netcv = bn.cv(retention, bn.gs1, loss ="pred", k = 5, loss.args = list(target = "Comm"), debug = TRUE)
-netcv 
+netcv
+# Based on expected loss, we calculate the accuracy for predicting Comm as 1 - expected loss (bottom row of output)
 ```
 
 ## Using a testing sample
@@ -341,7 +365,7 @@ First transform the network into a gRain object, then make predictions -> confus
 We again measure the model's ability to predict "Comm". Could repeat for the others as well.
 
 ```{r}
-net1 <- as.grain(bn.mle)
+net1 <- as.grain(bn.mle) # Refers to the model built in the 'Fit model' section.
 
 # Get probability predictions
 predComm <- predict(net1, response = c("Comm"), newdata = retention_test, 
@@ -365,6 +389,7 @@ bn.mle1 = bn.fit(model2network("[Fuse][Plea][Atti|Fuse:Plea][Comm|Fuse:Plea:Atti
 predComm1= predict(bn.mle1, node = "Comm",data = retention_test) 
 predComm1
 table(predCommclass, predComm1)
+# Rows: estimated. Columns: Reference
 ########################################################################
 
 # True values
@@ -382,11 +407,15 @@ table(predComm_class$pred$Comm, retention_test$Comm)
   
 ```{r}
 colAUC(predComm, retention_test[ ,4], plotROC = TRUE)
+# The black line "High [high vs. low]: When the variable is High, the model easily reaches a high sensitivity, yielding a high AUC. This is due to the reason that it easily distinguishes between high and low when the variable is high.
+# The light blue line Low [High vs. Med]: When the variable is Low, the model struggles to reach high sensitivity, yielding a poor distinguish between high and medium. That means poor prediction.
 ```
 
 # Making queries
 
 ```{r}
+# In this section we want to investigate how the two variables, Atti and Comp change as we define the level of Fuse
+
 # Transform the bn into a junction tree 
 # options(digits=1)
 junction <- compile(as.grain(bn.mle))
@@ -443,7 +472,7 @@ functional usefulness does not radically affect the customer´s attitude.
 I Targetd Ads scriptet bruges en anden metode, skal den uddybes?
 
 ```{r}
-targeted.adv.beta <- read.csv("../Code/Data/simulated_targeted_adv_data.csv", header = T, colClasses = "factor")
+targeted.adv.beta <- read.csv("data/simulated_targeted_adv_data.csv", header = T, colClasses = "factor")
 
 # Build the structure
 nb_structure <- tree.bayes(targeted.adv.beta[, -1], "Buy")
@@ -453,6 +482,17 @@ plot(nb_structure)
 bnTA.mle <- bn.fit (nb_structure, data = targeted.adv.beta[, -1], method = "mle")
 bnTA.mle
 
+# Asumming 
+c=0.5
+r_s = 8
+r_u = 10
+
+# a. ) Compute the ELP for the population consisting of individuals with the 
+# following characteristics: 
+
+
+# Married, using desktop, average age
+library (gRain)
 junctionTA <- compile (as.grain(bnTA.mle))
 Query_yes <- setEvidence (junctionTA, nodes = c("Marital.Status", 
                                                 "Device.Usage",
@@ -463,6 +503,23 @@ Query_yes <- setEvidence (junctionTA, nodes = c("Marital.Status",
                                         "33-54",
                                         "Yes"))
 querygrain(Query_yes, nodes = "Buy")
+
+
+Query_no<- setEvidence (junctionTA, nodes = c("Marital.Status", 
+                                                "Device.Usage",
+                                                "Age", 
+                                                "Mailed"), 
+                          states = c("Married", 
+                                     "Desktop",
+                                     "33-54",
+                                     "No"))
+querygrain(Query_no, nodes = "Buy")
+
+options(digits=2)
+ELP = querygrain(Query_yes, nodes = "Buy")$Buy[[2]] * r_s -
+  querygrain(Query_no, nodes = "Buy")$Buy[[2]] * r_u - c
+ELP
+# Since the ELP is positive and high, we mail to this population
 ```
 
 # Product Recommendation
@@ -476,16 +533,16 @@ library (gRain)     # for querying BN
 library(Rgraphviz)  # for visualizing BN
 
 # Data on user preferences
-products = read.csv("../Code/Data/CollFilforR.csv", header = T, colClasses = "factor", sep = ";")
+products = read.csv("Data/CollFilforR.csv", header = T, colClasses = "factor", sep = ";")
 View(products)
 ```
 
 ```{r}
 set.seed(234)
-
 # Defining the variables used in the model 
 f <- cbind(V1, V2, V3, V4)~1 #(~1 means without covariates)
 
+# Then we find the optimal number of classes evaluating on BIC and save the best model
 bic_values <- numeric(length = 5) #we are testing 5 models (from 2 to 6 classes)
 min_bic <- 100000
 for(i in 2:6){
@@ -515,12 +572,14 @@ plot(classes,
 
 # best selected model - full output
 LCA_best_model 
+# The best model only has two classes and the probability can be found below
 
 # specific output
 LCA_best_model$posterior # matrix of posterior class membership probabilities
 LCA_best_model$predclass # class membership
 LCA_best_model$probs # estimated class-conditional response probabilities
 
+# We add it to the data frame
 # save the class
 products_copy <- products
 products_copy$class <- factor(LCA_best_model$predclass)
@@ -532,7 +591,8 @@ products_copy$class <- factor(LCA_best_model$predclass)
 # and preferences as ´children' nodes
 products_wNA = na.omit(products_copy) # remove missing data from the dataset
 # learn the structure (e.g., TAN structure)
-products_dag = tree.bayes(products_wNA, "class") 
+# We specify class as the root node which determines the prduct score within each class 
+products_dag = tree.bayes(products_wNA, training = "class") 
 graphviz.plot(products_dag)
 # learn the parameters
 products.bn.mle <- bn.fit(products_dag, data = products_wNA, method = "mle")
@@ -540,18 +600,108 @@ bn.fit.barchart(products.bn.mle$V1)
 ```
 
 ```{r}
+# We set evidence for some of the variables.
 library (gRain)
 junction <- compile (as.grain(products.bn.mle))
 
-# New: Warning due to 0 probabilities tables, we use Bayesian parameter estimation
-graph.model <- as.graphNEL(products_dag)
-gr.model <- grain(graph.model, data =  products_wNA, smooth = 1)
-
 # now we can use the net for inference
-V1V2V3 <- setEvidence (gr.model, nodes = c("V1", "V2", "V3"), states = c("5", "1", "1"))
+V1V2V3 <- setEvidence (junction, nodes = c("V1", "V2", "V3"), states = c("5", "1", "1"))
 prediction = querygrain(V1V2V3, nodes = "V4")
 str(prediction)
 prediction$V4
 ```
+```{r}
+#    1    2    4    5 
+#  0.36 0.64 0.00 0.00 
+# this user most likely will score 2 or 1 => do not recommend the product V4
+# his expected preference for V4 is 
+preference = prediction$V4[[1]]*1 + prediction$V4[[2]]*2 + prediction$V4[[3]]*4 + prediction$V4[[4]]*5  
+preference
+# The predicted score is 1.6
+
+querygrain(V1V2V3, nodes = "class") # to get the expected class 
+# The predicted class is 2
+```
+```{r}
+# To make recommendation in a dataset and save them
+# Loop through each row in dataset (in this example we use our data)
+data=products_copy
+# Initialize predictions_df outside the loop
+predictions_df <- data.frame(RowIndex = integer(), Node = character(), stringsAsFactors = FALSE)
+
+# Loop through each row in your dataset to predict and save the most probable product to recommend
+for (i in 1:nrow(data)) {
+  knownPreferences <- !is.na(data[i, ])
+  unknownPreferences <- is.na(data[i, ])
+  
+  # Ensure there is at least one known preference to set as evidence
+  if(any(knownPreferences)) {
+    nodes <- names(data)[knownPreferences]
+    states <- as.character(data[i, knownPreferences])
+    
+    # Only proceed if there are nodes and states to set as evidence
+    if(length(nodes) > 0 && length(states) > 0) {
+      junctionWithEvidence <- setEvidence(junction, nodes = nodes, states = states)
+      
+      
+      # Now, proceed to query the model for unknown preferences
+      for (nodeToPredict in names(data)[unknownPreferences]) {
+        prediction <- querygrain(junctionWithEvidence, nodes = nodeToPredict)
+        predictions_df <- rbind(predictions_df, data.frame(RowIndex = i, Node = nodeToPredict, stringsAsFactors = FALSE))
+      }
+      }
+    }
+  }
+
+View(predictions_df)
+write.csv(predictions_df, "predictions_product.csv", row.names = FALSE)
+
+
+# To save the probabilities instead of the most probable state
+predictions_df <- data.frame(RowIndex = integer(),
+                             Node = character(),
+                             State = character(),
+                             Probability = numeric(),
+                             stringsAsFactors = FALSE)
+
+for (i in 1:nrow(data)) {
+  knownPreferences <- !is.na(data[i, ])
+  unknownPreferences <- is.na(data[i, ])
+  
+  if(any(knownPreferences)) {
+    nodes <- names(data)[knownPreferences]
+    states <- as.character(data[i, knownPreferences])
+    
+    if(length(nodes) > 0 && length(states) > 0) {
+      junctionWithEvidence <- setEvidence(junction, nodes = nodes, states = states)
+      
+      for (nodeToPredict in names(data)[unknownPreferences]) {
+        prediction <- querygrain(junctionWithEvidence, nodes = nodeToPredict)
+        
+       
+          # Extract probabilities and their corresponding state names
+          probs <- prediction[[nodeToPredict]]  # Accessing the numeric vector of probabilities
+          stateNames <- attr(probs, "dimnames")[[1]]  # Extracting state names from dimnames
+          
+          # Iterate through each state and its probability
+          for (j in seq_along(probs)) {
+            new_row <- data.frame(RowIndex = i,
+                                  Node = nodeToPredict,
+                                  State = stateNames[j],
+                                  Probability = probs[j],
+                                  stringsAsFactors = FALSE)
+            predictions_df <- rbind(predictions_df, new_row)
+          }
+        }
+        
+      }
+    }
+  }
+
+View(predictions_df)
+write.csv(predictions_df, "prediction_probabilities.csv", row.names = FALSE)
+```
+
+
  
  
