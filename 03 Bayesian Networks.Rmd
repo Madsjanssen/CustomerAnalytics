@@ -19,6 +19,7 @@ library (caTools)
 library(poLCA)
 retention <- read.csv("../Code/Data/retention.csv", header = T, colClasses = "factor" )
 retention_test <- read.csv("../Code/Data/retention_test.csv", header = T, colClasses = "factor" )
+
 ```
 
 # Creating DAGs
@@ -466,8 +467,7 @@ querygrain(Query_yes, nodes = "Buy")
 
 # Product Recommendation
 
-Her bruges også andre funktioner.
-Laver en latent class analysis.
+Here we use cluster learning. We use latent class analysis to create segments and use segment membership to make product recommendations. 
 
 ```{r}
 library(poLCA)      # for latent classification 
@@ -475,7 +475,83 @@ library(bnlearn)    # for building BN
 library (gRain)     # for querying BN
 library(Rgraphviz)  # for visualizing BN
 
-# Maybe insert code
-
+# Data on user preferences
+products = read.csv("../Code/Data/CollFilforR.csv", header = T, colClasses = "factor", sep = ";")
+View(products)
 ```
 
+```{r}
+set.seed(234)
+
+# Defining the variables used in the model 
+f <- cbind(V1, V2, V3, V4)~1 #(~1 means without covariates)
+
+bic_values <- numeric(length = 5) #we are testing 5 models (from 2 to 6 classes)
+min_bic <- 100000
+for(i in 2:6){
+  lc <- poLCA(f, products, nclass=i, maxiter=3000, 
+              tol=1e-5, na.rm=FALSE,  
+              nrep=1, verbose=TRUE, calc.se=TRUE)
+  
+  bic_values[i-1] <- lc$bic  # Store the BIC value for each model
+  
+  if(lc$bic < min_bic){
+    min_bic <- lc$bic
+    LCA_best_model<-lc
+  }
+} 
+```
+
+```{r}
+# bic
+print(bic_values)
+# plot bic
+classes <- 2:6
+plot(classes,
+     bic_values, 
+     type = "b", 
+     pch = 19, xlab = "Number of Classes", ylab = "BIC",
+     main = "BIC Values by Number of Classes")
+
+# best selected model - full output
+LCA_best_model 
+
+# specific output
+LCA_best_model$posterior # matrix of posterior class membership probabilities
+LCA_best_model$predclass # class membership
+LCA_best_model$probs # estimated class-conditional response probabilities
+
+# save the class
+products_copy <- products
+products_copy$class <- factor(LCA_best_model$predclass)
+```
+
+```{r}
+# Second step, for making product recommendations, 
+# set up a BN classifier considering the learned class as the 'root' node 
+# and preferences as ´children' nodes
+products_wNA = na.omit(products_copy) # remove missing data from the dataset
+# learn the structure (e.g., TAN structure)
+products_dag = tree.bayes(products_wNA, "class") 
+graphviz.plot(products_dag)
+# learn the parameters
+products.bn.mle <- bn.fit(products_dag, data = products_wNA, method = "mle")
+bn.fit.barchart(products.bn.mle$V1)
+```
+
+```{r}
+library (gRain)
+junction <- compile (as.grain(products.bn.mle))
+
+# New: Warning due to 0 probabilities tables, we use Bayesian parameter estimation
+graph.model <- as.graphNEL(products_dag)
+gr.model <- grain(graph.model, data =  products_wNA, smooth = 1)
+
+# now we can use the net for inference
+V1V2V3 <- setEvidence (gr.model, nodes = c("V1", "V2", "V3"), states = c("5", "1", "1"))
+prediction = querygrain(V1V2V3, nodes = "V4")
+str(prediction)
+prediction$V4
+```
+ 
+ 
