@@ -1,0 +1,244 @@
+---
+title: "04 Clustering & Segmentation"
+author: "Malthe Holm"
+date: "2024-06-02"
+output: html_document
+---
+
+# Packages and data
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# R script for the analysis of the HBAT example in the cluster analysis lecture
+library(readstata13)
+library(NbClust)
+rm(list=ls())
+
+HBAT <- read.dta13("Data/hbat.dta")
+```
+
+# Data Preparation
+```{r}
+# first we make our own id variable based on the original order
+nobs <- nrow(HBAT)
+HBAT$id <- seq(1,nobs)
+# pick the variables for cluster analysis and summarize them
+hbat <- c("x6","x8","x12","x15","x18")
+summary(HBAT[,hbat])
+apply(HBAT[,hbat],2,sd) # Get standard deviation of the variables
+# multicollinearity should not be a problem
+cor(HBAT[,hbat])
+# which is confirmed
+# look for outliers
+dev <- t(t(HBAT[,hbat])-apply(HBAT[,hbat],2,mean))
+dev2 <- dev^2
+sumdev2 <- rowSums(dev2)
+sort(sqrt(sumdev2))
+# observations 6 and 87 are candidates for deletion
+
+#Remove the observations and give new IDs
+HBAT <- subset(HBAT,id!="6"&id!="87")
+nobs <- nrow(HBAT)
+HBAT$id <- seq(1,nobs)
+```
+
+# Hierarchical clustering
+```{r}
+# First, create a distance matrix using the Euclidean method for selected columns identified by 'hbat'.
+dist <- dist(HBAT[,hbat], method="euclidean")
+# Square the distance matrix - a common step before applying Ward's method to ensure that the algorithm focuses on variance minimization.
+dist2 <- dist^2
+```
+
+## Perform hierarchical clustering using Ward's method
+```{r}
+## Perform hierarchical clustering using Ward's method, which minimizes the total within-cluster variance at each step.
+H.fit <- hclust(dist2, method="ward.D")
+
+# Plot the dendrogram to visualize the clustering hierarchy.
+plot(H.fit)
+# After inspecting the dendrogram, we determine that the data seems best divided into three or possibly four clusters.
+
+# Calculate the percentage increase in height at each cluster merge to help determine the optimal number of clusters.
+# This helps identify significant jumps in dissimilarity (height), suggesting a natural cluster grouping.
+denominator <- cumsum(H.fit$merge[,2])  # Cumulative sum of heights at which clusters are merged.
+length(denominator) <- nobs-2  # Adjust length of vector to match the number of observations minus 2.
+denominator <- c(1, denominator)  # Prepend 1 to the beginning of the vector to handle division for the first element.
+pct <- H.fit$merge[,2] / denominator  # Calculate percent increases for each merge.
+tail(pct, n=10)  # Display the last 10 percentage increases to inspect the largest changes at the end of the clustering process.
+
+# The decision to stop clustering is made just before a significant increase in the percentage increase of height, indicating a natural cluster boundary.
+# From the analysis, apart from going from 2 to 1 cluster (0.22598688), the largest jump in percent increase is observed when reducing from 4 to 3 clusters (0.15224902).
+# The last large merge happening from 2 clusters to 1 is typically indicative of forcing too broad a grouping.
+
+# Cut the dendrogram tree into 4 clusters based on the observed hierarchical structure.
+grp <- as.factor(cutree(H.fit, k=4))
+
+# Display a table showing the number of observations in each of the 4 identified clusters.
+# This helps to understand the distribution of data points across the clusters.
+table(grp)
+# Observing the distribution can provide insights into how balanced or imbalanced the clusters are, and whether the division into clusters makes practical sense based on the domain knowledge.
+
+
+# Illustrate a 4-cluster solution by adding rectangles to the dendrogram plot to highlight the clusters.
+rect.hclust(H.fit, k=4, border="red")
+
+# Assess the outcome by computing the mean of selected columns for each cluster. This helps to understand the central tendency of each cluster.
+aggregate(HBAT[,hbat], list(grp), mean)
+
+# Perform ANOVA (Analysis of Variance) to assess if there are statistically significant differences among the means of the clusters for different variables.
+summary(aov(x6 ~ grp, data=HBAT))  # Analyze variable x6
+summary(aov(x8 ~ grp, data=HBAT))  # Analyze variable x8
+summary(aov(x12 ~ grp, data=HBAT)) # Analyze variable x12
+summary(aov(x15 ~ grp, data=HBAT)) # Analyze variable x15
+summary(aov(x18 ~ grp, data=HBAT)) # Analyze variable x18
+# All variables are significantly different
+```
+
+## Switch to complete linkage method
+```{r}
+## Switch to complete linkage method for hierarchical clustering using the original distance matrix.
+H.fit <- hclust(dist, method="complete")
+
+# Draw a dendrogram to visualize the clustering with complete linkage.
+plot(H.fit)
+
+# Assess the percentage increase in merging heights, similar to previous steps, to evaluate the cluster merges.
+denominator <- cumsum(H.fit$merge[,2])
+length(denominator) <- nobs-2
+denominator <- c(1, denominator)
+pct <- H.fit$merge[,2] / denominator
+tail(pct, n=10)  # Display the last 10 percentage increases.
+# Biggest jump is from 4 to 3 clusters.
+
+# Results from Ward's method are validated with complete linkage, noting differences in clustering.
+grp <- as.factor(cutree(H.fit, k=4))
+table(grp)  # Display the distribution of data points in the clusters.
+
+# Illustrate the 4-cluster solution with complete linkage, highlighting the clusters on the dendrogram.
+rect.hclust(H.fit, k=4, border="red")
+
+# Assess the outcome by computing the mean for each cluster with the new method.
+aggregate(HBAT[,hbat], list(grp), mean)
+
+# Repeat ANOVA to compare cluster means for several variables using the new cluster assignments.
+summary(aov(x6 ~ grp, data=HBAT))
+summary(aov(x8 ~ grp, data=HBAT))
+summary(aov(x12 ~ grp, data=HBAT))
+summary(aov(x15 ~ grp, data=HBAT))
+summary(aov(x18 ~ grp, data=HBAT))
+# All variables are significant
+
+# Use NbClust to determine the optimal number of clusters using a variety of indices and Ward's method.
+res <- NbClust(HBAT[,hbat], distance = "euclidean", min.nc=2, max.nc=8, 
+               method = "ward.D", index = "all")
+
+# Display all indices computed by NbClust and the recommended number of clusters. Interpretation???
+res$All.index
+res$Best.nc
+# Note: This conclusion is statistical and does not necessarily reflect the practical significance or domain-specific context of the data.
+```
+
+# Nonhierarchical Clustering
+```{r}
+# Set a random seed to ensure reproducibility of the k-means clustering results
+set.seed(4118)
+
+# Perform k-means clustering on selected columns with 4 clusters and 25 random starts to ensure convergence to a good solution
+NH.fit <- kmeans(HBAT[,hbat], 4, nstart=25)
+# Print the results of the k-means clustering to see the cluster centers and size
+print(NH.fit)
+
+# Extract the cluster assignments for each observation and convert it into a factor
+grp <- as.factor(NH.fit[[1]])
+# Display a table to see the number of observations in each cluster
+table(grp)
+
+# Assess the outcome by computing the mean of selected variables for each cluster
+aggregate(HBAT[,hbat], list(grp), mean)
+
+# Perform ANOVA to assess if there are significant differences among clusters for various variables
+summary(aov(x6 ~ grp, data=HBAT))
+summary(aov(x8 ~ grp, data=HBAT))
+summary(aov(x12 ~ grp, data=HBAT))
+summary(aov(x15 ~ grp, data=HBAT))
+summary(aov(x18 ~ grp, data=HBAT))
+# x18 is not significantly different
+
+# Create a snake plot to visualize the profiles of cluster centers
+matplot(t(NH.fit[[2]]), type="l")
+# X-axis: indicator for each variable. Comment on notable trends such as clusters having lower or higher means for certain variables.
+
+# Check criterion validity by assessing mean values of additional variables within each cluster
+aggregate(HBAT[,c("x19","x20","x21","x22")], list(grp), mean)
+# Perform ANOVA for these variables as well to check significant differences
+summary(aov(x19 ~ grp, data=HBAT))
+summary(aov(x20 ~ grp, data=HBAT))
+summary(aov(x21 ~ grp, data=HBAT))
+summary(aov(x22 ~ grp, data=HBAT))
+# x20 is insignificant
+
+# Profile the clusters based on categorical variables and test statistical independence
+tbl <- table(HBAT$x1, grp)
+# Convert the count table to a percentage table for better interpretation
+round(100 * prop.table(tbl, 2))
+# Perform chi-square test to see if distribution of x1 is independent of cluster assignment
+chisq.test(tbl)
+
+# Repeat profiling and chi-square tests for additional categorical variables
+tbl <- table(HBAT$x2, grp)
+round(100 * prop.table(tbl, 2))
+chisq.test(tbl)
+tbl <- table(HBAT$x3, grp)
+round(100 * prop.table(tbl, 2))
+chisq.test(tbl)
+tbl <- table(HBAT$x4, grp)
+round(100 * prop.table(tbl, 2))
+chisq.test(tbl)
+tbl <- table(HBAT$x5, grp)
+round(100 * prop.table(tbl, 2))
+chisq.test(tbl)
+```
+
+# Toy example
+```{r}
+## Toy example for demonstrating hierarchical clustering
+# Define income and education data for a toy dataset
+inc <- c(5, 6, 15, 16, 25, 30)
+edu <- c(5, 6, 14, 15, 20, 19)
+toy <- data.frame(inc, edu)
+
+# Calculate Euclidean distance between points
+toy.dist <- dist(toy, method="euclidean")
+# Square the distances for use in clustering algorithms that minimize variance
+toy.dist2 <- toy.dist^2
+
+# Perform hierarchical clustering using single linkage
+toy.H.single <- hclust(toy.dist2, method="single")
+# Output the merging sequence of clusters
+toy.H.single$merge
+# Output increases in distance at each merge point
+toy.H.single$height
+# Permutation of original observations suitable for plotting
+toy.H.single$order
+# Plot the dendrogram
+plot(toy.H.single)
+
+# Explore other linkage methods for comparison
+toy.H.complete <- hclust(toy.dist, method="complete")
+toy.H.average <- hclust(toy.dist, method="average")
+toy.H.centroid <- hclust(toy.dist, method="centroid")
+# Perform hierarchical clustering using Ward's method
+toy.H.ward <- hclust(toy.dist2, method="ward.D")
+```
+
+# Distance vs shape
+```{r}
+scores<-matrix(c(21,34,17,42,62,75,58,85),nrow=4,byrow=F)
+matplot(scores,type="l")
+dist(t(scores),method="euclidean")
+cor(scores)
+```
+
+
+
+
