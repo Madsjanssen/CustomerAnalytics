@@ -4,8 +4,23 @@ author: "Malthe Holm"
 date: "2024-06-02"
 output: html_document
 ---
+# Cluster Analysis
+## Hierarchical and non-hierarchical cluster analysis.
+Key lessons from hierarchical and non-hierarchical cluster analysis:
+  ▶ There is substantial ambiguity associated with:
+    ▶ The number of clusters
+    ▶ The measurement of proximity of individuals
+    ▶ The measurement of proximity of groups
+  ▶ There is no single index to compare different cluster solutions
+  ▶ Existing validation techniques depend on data and/or the cluster algorithm
 
-# Packages and data
+Background: Hierarchical and non-hierarchical cluster analysis
+  ▶ Both of the classic methods for doing cluster analysis are based on combinatorial methods using heuristic         procedures
+    ▶ No assumptions about the class structure are made regarding the population
+    ▶ Choice of clustering method and proximity measure is based on posterior
+      criteria like interpretability of the results
+    
+### Packages and data.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 # R script for the analysis of the HBAT example in the cluster analysis lecture
@@ -16,7 +31,7 @@ rm(list=ls())
 HBAT <- read.dta13("Data/hbat.dta")
 ```
 
-# Data Preparation
+### Data Preparation
 ```{r}
 # first we make our own id variable based on the original order
 nobs <- nrow(HBAT)
@@ -41,7 +56,7 @@ nobs <- nrow(HBAT)
 HBAT$id <- seq(1,nobs)
 ```
 
-# Hierarchical clustering
+### Hierarchical clustering
 ```{r}
 # First, create a distance matrix using the Euclidean method for selected columns identified by 'hbat'.
 dist <- dist(HBAT[,hbat], method="euclidean")
@@ -49,7 +64,7 @@ dist <- dist(HBAT[,hbat], method="euclidean")
 dist2 <- dist^2
 ```
 
-## Perform hierarchical clustering using Ward's method
+#### Perform hierarchical clustering using Ward's method
 ```{r}
 ## Perform hierarchical clustering using Ward's method, which minimizes the total within-cluster variance at each step.
 H.fit <- hclust(dist2, method="ward.D")
@@ -94,7 +109,7 @@ summary(aov(x18 ~ grp, data=HBAT)) # Analyze variable x18
 # All variables are significantly different
 ```
 
-## Switch to complete linkage method
+#### Switch to complete linkage method
 ```{r}
 ## Switch to complete linkage method for hierarchical clustering using the original distance matrix.
 H.fit <- hclust(dist, method="complete")
@@ -138,7 +153,7 @@ res$Best.nc
 # Note: This conclusion is statistical and does not necessarily reflect the practical significance or domain-specific context of the data.
 ```
 
-# Nonhierarchical Clustering
+### Nonhierarchical Clustering
 ```{r}
 # Set a random seed to ensure reproducibility of the k-means clustering results
 set.seed(4118)
@@ -199,7 +214,7 @@ round(100 * prop.table(tbl, 2))
 chisq.test(tbl)
 ```
 
-# Toy example
+### Toy example
 ```{r}
 ## Toy example for demonstrating hierarchical clustering
 # Define income and education data for a toy dataset
@@ -231,13 +246,249 @@ toy.H.centroid <- hclust(toy.dist, method="centroid")
 toy.H.ward <- hclust(toy.dist2, method="ward.D")
 ```
 
-# Distance vs shape
+### Distance vs shape
 ```{r}
 scores<-matrix(c(21,34,17,42,62,75,58,85),nrow=4,byrow=F)
 matplot(scores,type="l")
 dist(t(scores),method="euclidean")
 cor(scores)
 ```
+
+## Model-based clustering
+  ▶ Model-based clustering assumes that the population is made up of several distinct subsets/clusters, each          governed by a different multivariate probability density function
+  ▶ The parameters associated with the model can be used to assign each observation a posterior probability of        belonging to a cluster
+  ▶ The problems of identifying the number of clusters and selecting the clustering method boil down to a model       selection problem – for which we have a number of procedures
+
+R script for the analysis of the HBAT example in the model-based clustering lecture
+### Data prep
+```{r}
+# Data prep is just like previously
+library(readstata13)
+
+# Clear all existing objects in the workspace to ensure a clean working environment
+rm(list=ls())
+
+## Data Preparation
+# Read the data from a Stata file (.dta format version 13)
+HBAT <- read.dta13("Data/hbat.dta")
+
+# Create an ID variable based on the original order of the data
+nobs <- nrow(HBAT)  # Get the number of observations
+HBAT$id <- seq(1, nobs)
+
+# Select variables to be used in the cluster analysis and summarize them
+hbat <- c("x6", "x8", "x12", "x15", "x18")
+summary(HBAT[, hbat])  # Provides a summary (min, 1st Qu., Median, Mean, 3rd Qu., Max) for each variable
+apply(HBAT[, hbat], 2, sd)  # Calculate and display the standard deviation for each variable
+
+# Check for multicollinearity, which can affect the clustering
+cor(HBAT[, hbat])  # Compute and display the correlation matrix of the selected variables
+
+# Identify and handle outliers
+# Calculate deviations from the mean for each variable
+dev <- t(t(HBAT[, hbat]) - apply(HBAT[, hbat], 2, mean))
+# Square the deviations
+dev2 <- dev^2
+# Sum the squared deviations across all variables for each observation
+sumdev2 <- rowSums(dev2)
+# Sort and display the square root of these sums to identify potential outliers
+sort(sqrt(sumdev2))
+# Observations 6 and 87 are identified as outliers and are candidates for removal
+
+# Remove identified outliers and update the dataset
+HBAT <- subset(HBAT, id != "6" & id != "87")
+# Update the number of observations and reassign the ID variable
+nobs <- nrow(HBAT)
+HBAT$id <- seq(1, nobs)
+```
+
+### Perform the model-based clustering
+```{r}
+## Model-based Clustering
+# Load the 'mclust' library for Gaussian finite mixture modeling
+library("mclust")
+
+# Perform model-based clustering using the selected variables
+mc <- Mclust(HBAT[, hbat])
+# Display the model fitting results, including BIC (Bayesian Information Criterion) plots to assess different model solutions
+plot(mc, HBAT[, hbat], what = "BIC", col = "black")
+
+# Summarize the best model according to BIC and the estimated parameters
+summary(mc)
+# Mclust suggests a EEI (diagonal, equal volume and shape) model with 3 components which yields the best BIC value (the one closest to 0) This can also be seen in the plot.
+
+# Focus on a 4-cluster solution, as determined by prior analysis or BIC suggestion
+mc4 <- Mclust(HBAT[, hbat], G=4)  # G=4 specifies that the model should consider exactly 4 clusters
+# Summarize the 4-cluster model to inspect cluster characteristics and statistics
+summary(mc4)
+```
+
+# Segmentation
+## R script for the analysis of the McDonald's example in the segmentation lecture
+### Load packages and data
+```{r}
+library("flexclust")
+# install.package(clue) - should be installed as part of the flexclust but isn't
+library("partykit")
+rm(list=ls())
+
+# Read in data
+mcdonalds <- read.csv("Data/mcdonalds.csv")
+```
+### Data preprocessing
+```{r}
+# Look into content
+names(mcdonalds)
+dim(mcdonalds)
+head(mcdonalds, 3) # Display the first three rows of the dataframe to see a snippet of the data
+
+# Change Yes/No to 1/0
+MD.x <- as.matrix(mcdonalds[, 1:11])  # Convert the first 11 columns of the 'mcdonalds' dataframe into a matrix
+MD.x <- (MD.x == "Yes") + 0           # Change "Yes" to 1 and "No" to 0 in the matrix
+
+## Exploring data
+# Calculate the fraction of responses that see McDonald's possessing each of the attributes
+round(colMeans(MD.x), 2)  # Compute column means (averages) for the matrix, rounded to two decimal places
+
+# PCA and perceptual map
+MD.pca <- prcomp(MD.x)              # Perform principal component analysis on the binary matrix
+summary(MD.pca)                     # Provide a summary of the PCA results, including variance explained
+print(MD.pca, digits = 1)           # Print the PCA object with results rounded to one decimal place
+plot(predict(MD.pca), col = "grey") # Plot the scores of the PCA, color points in grey
+
+projAxes(MD.pca)  # Plot projection axes on the PCA plot
+
+```
+
+### Extracting segments with k-means
+```{r}
+set.seed(28)
+
+# Perform flexible clustering on MD.x, testing a range of 2 to 8 clusters,
+# repeating the process 10 times to find stable solutions.
+MD.km28 <- stepFlexclust(MD.x, 2:8, nrep = 10, verbose = FALSE)
+
+# Plot the results from the flexible clustering to examine the number of segments (clusters) suggested
+plot(MD.km28, xlab = "number of segments")
+
+# Set another seed for bootstrapping to ensure reproducibility
+set.seed(1234)
+
+# Bootstrap the flexible clustering analysis to assess the stability of cluster solutions
+# from 2 to 8 clusters, repeating the bootstrapping 100 times
+MD.b28 <- bootFlexclust(MD.x, 2:8, nrep = 10, nboot = 100)
+
+# Plot the bootstrapping results using the adjusted Rand index as a measure of cluster stability
+plot(MD.b28, xlab = "number of segments", ylab = "adjusted Rand index")
+
+# Gorge plot
+# Relabel clusters in MD.km28 for clarity in reporting
+MD.km28 <- relabel(MD.km28) # Not working
+# Plot a histogram for the cluster labeled "4" within the data MD.x
+histogram(MD.km28[["4"]], data = MD.x, xlim = 0:1)
+
+# Plot segment-level stability across different solutions to examine consistency across clustering solutions
+slsaplot(MD.km28)
+
+# Save the four-segment solution for further analysis
+MD.k4 <- MD.km28[["4"]]
+
+# Analyze segment-level stability within the four-segment solution using silhouette widths
+MD.r4 <- slswFlexclust(MD.x, MD.k4)
+# Plot the segment stability for each segment in the four-segment solution
+plot(MD.r4, ylim = 0:1, xlab = "segment number", ylab = "segment stability")
+```
+
+### Profiling segments
+```{r}
+# Perform hierarchical clustering on MD.x to cluster the variables rather than the observations. This can help in understanding how different attributes group together.
+MD.vclust <- hclust(dist(t(MD.x)))
+
+# Create a barchart to visualize the segment profile using the cluster order from hierarchical clustering. 'which' parameter uses the order of the hierarchical clusters to arrange the segments.
+barchart(MD.k4, shade = TRUE, which = rev(MD.vclust$order))
+
+# Plot the clusters on the first two principal components to visualize segment separation.
+# This uses the clusters defined by MD.k4 and projects them onto the space defined by the first two PCs computed earlier.
+plot(MD.k4, project = MD.pca, data = MD.x, hull = FALSE, simlines = FALSE,
+     xlab = "principal component 1", ylab = "principal component 2")
+
+# Project and plot the principal component axes onto the PCA plot to show directions of maximum variance.
+# This helps in understanding the orientation and significance of the components in the clustering context.
+projAxes(MD.pca)
+```
+### Describing segments
+```{r}
+# Extract the segment membership for each consumer from the clustering results and add it as a new column in the 'mcdonalds' dataframe
+mcdonalds$k4 <- clusters(MD.k4)
+
+# Recode the 'Like' variable into a factor with ordered levels from "I love it!+5" to "I hate it!-5"
+mcdonalds$like <- factor(mcdonalds$Like, levels=c("I love it!+5", "+4", "+3", "+2", "+1", "0", "-1", "-2", "-3", "-4", "I hate it!-5"))
+
+# Create a mosaic plot to visualize the distribution of like/hate across the different segments
+mosaicplot(table(mcdonalds$k4, mcdonalds$like), shade = TRUE, main = "", 
+           xlab = "segment number", ylab = "Like/Dislike")
+
+# Create another mosaic plot to visualize the distribution of gender across the different segments
+mosaicplot(table(mcdonalds$k4, mcdonalds$Gender), shade = TRUE, main = "Gender distribution by segment",
+           xlab = "segment number", ylab = "Gender")
+
+# Create a boxplot to show the distribution of age within each segment, using variable width to reflect the size of each segment
+# and notches to show the confidence interval around the median which helps in comparing medians across segments
+boxplot(mcdonalds$Age ~ mcdonalds$k4, varwidth = TRUE, notch = TRUE, 
+        main = "Age Distribution by Segment", xlab = "Segment", ylab = "Age")
+```
+
+### Predict a segment
+```{r}
+# Predict segment 3 membership using a classification tree
+# Recode 'VisitFrequency' into a categorical variable with specific levels
+mcdonalds$visitfrequency <- factor(mcdonalds$VisitFrequency,
+                                   levels=c("Never", "Once a year", "Every three months", "Once a month", "Once a week", "More than once a week"))
+
+# Build a conditional inference tree to predict whether a consumer belongs to segment 3
+# based on their like/dislike of McDonald's, age, visit frequency, and gender
+tree <- ctree(factor(k4 == 3) ~ like + Age + visitfrequency + factor(Gender),
+              data = mcdonalds)
+
+# Plot the classification tree to visualize the decision rules
+plot(tree, main = "Classification Tree for Segment 3 Membership")
+```
+
+### Selecting (the) target segment(s)
+```{r}
+# Calculate the mean visit frequency for each segment.
+# The visit frequency is recoded as numeric from 1 (Never) to 6 (More than once a week).
+# 'tapply' is used to apply a function to subsets of a vector, grouped by another vector (here, segment k4).
+visit <- tapply(as.numeric(mcdonalds$visitfrequency), mcdonalds$k4, mean)
+# Display the mean visit frequencies for each segment
+visit
+
+# Recode the 'like' scale from a range of 1 (I love it) to 11 (I hate it) to a new scale of 5 (I love it) to -5 (I hate it).
+# This is done by first negating the numeric coding and shifting it so that the range is centered around zero.
+like <- tapply(-as.numeric(mcdonalds$like) + 6, mcdonalds$k4, mean)
+# Display the recalculated like/dislike means for each segment
+like
+
+# Create a binary variable for gender, where Female is coded as 1 and Male as 0.
+# Calculate the proportion of females in each segment.
+female <- tapply((mcdonalds$Gender == "Female") + 0, mcdonalds$k4, mean)
+# Display the proportion of females in each segment
+female
+
+# Create a plot to visualize the relationship between average visit frequency and average like rating,
+# with the size of the plotting symbol ('cex') proportional to the proportion of females in the segment.
+# Set specific limits for x and y axes to standardize the view and ensure all points are visible.
+plot(visit, like, cex = 10 * female, xlim = c(2, 4.5), ylim = c(-3, 3),
+     xlab = "Average Visit Frequency", ylab = "Average Like Rating")
+
+# Add segment numbers as text labels at each point on the plot to identify segments.
+text(visit, like, labels = 1:4)
+```
+
+
+
+
+
 
 
 
