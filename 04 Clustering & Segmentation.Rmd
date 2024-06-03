@@ -115,10 +115,10 @@ plot(H.fit)
 
 # Calculate the percentage increase in height at each cluster merge to help determine the optimal number of clusters.
 # This helps identify significant jumps in dissimilarity (height), suggesting a natural cluster grouping.
-denominator <- cumsum(H.fit$merge[,2])  # Cumulative sum of heights at which clusters are merged.
+denominator <- cumsum(H.fit[[2]])  # Cumulative sum of heights at which clusters are merged.
 length(denominator) <- nobs-2  # Adjust length of vector to match the number of observations minus 2.
 denominator <- c(1, denominator)  # Prepend 1 to the beginning of the vector to handle division for the first element.
-pct <- H.fit$merge[,2] / denominator  # Calculate percent increases for each merge.
+pct <- H.fit[[2]] / denominator  # Calculate percent increases for each merge.
 tail(pct, n=10)  # Display the last 10 percentage increases to inspect the largest changes at the end of the clustering process.
 
 # The decision to stop clustering is made just before a significant increase in the percentage increase of height, indicating a natural cluster boundary.
@@ -135,6 +135,7 @@ table(grp)
 
 
 # Illustrate a 4-cluster solution by adding rectangles to the dendrogram plot to highlight the clusters.
+plot(H.fit)
 rect.hclust(H.fit, k=4, border="red")
 
 # Assess the outcome by computing the mean of selected columns for each cluster. This helps to understand the central tendency of each cluster.
@@ -163,12 +164,12 @@ H.fit <- hclust(dist, method="complete")
 plot(H.fit)
 
 # Assess the percentage increase in merging heights, similar to previous steps, to evaluate the cluster merges.
-denominator <- cumsum(H.fit$merge[,2])
+denominator <- cumsum(H.fit[[2]])
 length(denominator) <- nobs-2
 denominator <- c(1, denominator)
-pct <- H.fit$merge[,2] / denominator
+pct <- H.fit[[2]] / denominator
 tail(pct, n=10)  # Display the last 10 percentage increases.
-# Biggest jump is from 4 to 3 clusters.
+# Biggest jump is from 3 to 2 clusters besides 2 to 1.
 
 # Results from Ward's method are validated with complete linkage, noting differences in clustering.
 grp <- as.factor(cutree(H.fit, k=4))
@@ -183,10 +184,11 @@ table(grp)  # Display the distribution of data points in the clusters.
 # Use NbClust to determine the optimal number of clusters using a variety of indices and Ward's method.
 res <- NbClust(HBAT[,hbat], distance = "euclidean", min.nc=2, max.nc=8, 
                method = "ward.D", index = "all")
+# Maybe ignore plots
 
 # Display all indices computed by NbClust and the recommended number of clusters. Interpretation???
-res$All.index
-res$Best.nc
+# res$All.index
+# res$Best.nc
 
 # Note: This conclusion is statistical and does not necessarily reflect the practical significance or domain-specific context of the data.
 ```
@@ -307,7 +309,7 @@ summary(aov(x18 ~ grp, data=HBAT))
 matplot(t(NH.fit[[2]]), type="l")
 # X-axis: indicator for each variable. Comment on notable trends such as clusters having lower or higher means for certain variables.
 
-# Check criterion validity by assessing mean values of additional variables within each cluster
+# Check criterion validity by assessing mean values of additional variables within each cluster. If the clusters generalize well, we should see that observations also differ between clusters when assessing other variables.
 aggregate(HBAT[,c("x19","x20","x21","x22")], list(grp), mean)
 
 # Perform ANOVA for these variables as well to check significant differences
@@ -339,6 +341,7 @@ chisq.test(tbl)
 tbl <- table(HBAT$x5, grp)
 round(100 * prop.table(tbl, 2))
 chisq.test(tbl)
+# If the p-value is <.05, the distribution differs between clusters.
 ```
 
 ### Distance vs shape
@@ -376,7 +379,7 @@ HBAT$id <- seq(1, nobs)
 # Select variables to be used in the cluster analysis and summarize them
 hbat <- c("x6", "x8", "x12", "x15", "x18")
 summary(HBAT[, hbat])  # Provides a summary (min, 1st Qu., Median, Mean, 3rd Qu., Max) for each variable
-apply(HBAT[, hbat], 2, sd)  # Calculate and display the standard deviation for each variable
+apply(HBAT[, hbat], 2, sd)  # Calculate and display the standard deviation for each variable. If a variable has high sd, no good.
 
 # Check for multicollinearity, which can affect the clustering
 cor(HBAT[, hbat])  # Compute and display the correlation matrix of the selected variables
@@ -496,7 +499,7 @@ Adjusted Rand index:
 $$R_c=\frac{\text{index-expected index}}{\text{maximum index - expected index}}$$
 
 Gorge plot: 
-- We want to see many low and many high similarity measures, indicating well-separated segments
+- We want to see many low and many high similarity measures, indicating well-separated segments.
 - Example of Natural segmentation and therefore "good" Gorge Plot:
 
 ![Gorge Plot](Attachments/Gorge_Plot.png)
@@ -523,7 +526,7 @@ plot(MD.b28, xlab = "number of segments", ylab = "adjusted Rand index")
 
 # Gorge plot
 # Relabel clusters in MD.km28 for clarity in reporting
-MD.km28 <- relabel(MD.km28) # Not working
+MD.km28 <- relabel(MD.km28)
 # Plot a histogram for the cluster labeled "4" within the data MD.x
 histogram(MD.km28[["4"]], data = MD.x, xlim = 0:1)
 
@@ -545,8 +548,10 @@ plot(MD.r4, ylim = 0:1, xlab = "segment number", ylab = "segment stability")
 # Perform hierarchical clustering on MD.x to cluster the variables rather than the observations. This can help in understanding how different attributes group together.
 MD.vclust <- hclust(dist(t(MD.x)))
 
-# Create a barchart to visualize the segment profile using the cluster order from hierarchical clustering. 'which' parameter uses the order of the hierarchical clusters to arrange the segments.
+# Create a barchart to visualize the segment profile using the cluster order from hierarchical clustering. 
+# 'which' parameter uses the order of the hierarchical clusters to arrange the segments.
 barchart(MD.k4, shade = TRUE, which = rev(MD.vclust$order))
+# Dots show variable averages. Bars show within cluster average. If colored then the two average differences are significantly different from each other.
 
 # Plot the clusters on the first two principal components to visualize segment separation.
 # This uses the clusters defined by MD.k4 and projects them onto the space defined by the first two PCs computed earlier.
@@ -555,7 +560,7 @@ plot(MD.k4, project = MD.pca, data = MD.x, hull = FALSE, simlines = FALSE,
 
 # Project and plot the principal component axes onto the PCA plot to show directions of maximum variance.
 # This helps in understanding the orientation and significance of the components in the clustering context.
-projAxes(MD.pca)
+projAxes(MD.pca) # Needs to be run with line 558
 ```
 
 ## Describing segments
@@ -569,6 +574,7 @@ mcdonalds$like <- factor(mcdonalds$Like, levels=c("I love it!+5", "+4", "+3", "+
 # Create a mosaic plot to visualize the distribution of like/hate across the different segments
 mosaicplot(table(mcdonalds$k4, mcdonalds$like), shade = TRUE, main = "", 
            xlab = "segment number", ylab = "Like/Dislike")
+# Box width is cluster size, box height is distribution between levels, if box color is blue, more people have answered this than had it been unconditional of cluster.
 
 # Create another mosaic plot to visualize the distribution of gender across the different segments
 mosaicplot(table(mcdonalds$k4, mcdonalds$Gender), shade = TRUE, main = "Gender distribution by segment",
@@ -694,6 +700,7 @@ slsaplot(MD.km28)
 MD.k4 <- MD.km28[["4"]]
 MD.r4 <- slswFlexclust(MD.x, MD.k4)
 plot(MD.r4, ylim = 0:1, xlab = "segment number",ylab = "segment stability")
+# Cluster 1 has the lowest stability
 ```
 
 ## Extract segments with mixture distribution
