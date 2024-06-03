@@ -637,6 +637,12 @@ In LCA we have binary indicators and the latent variable is categorical.
 - Assess if this model can reproduce original relationships
 - Eventually assign a factor score to each individual, i.e. assign class membership
 
+The following application uses the McDonald's dataset.
+But it does not strictly follow the steps outlined above.
+
+We do not assess if the model can reproduce the original. 
+But we do use binary indicators and extract segments based om those.
+
 ## Load and preprocess
 
 ```{r}
