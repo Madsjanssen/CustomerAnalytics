@@ -627,11 +627,102 @@ plot(visit, like, cex = 10 * female, xlim = c(2, 4.5), ylim = c(-3, 3),
 text(visit, like, labels = 1:4)
 ```
 
+# Latent Class Analysis
 
+In the two last lectures, we focus on Latent Class Analysis (LCA).
+In LCA we have binary indicators and the latent variable is categorical.
 
+- Explore interrelationships for binary indicators
+- Define probabilistic model relating indicators to factor (think Bayesian Networks LCA)
+- Assess if this model can reproduce original relationships
+- Eventually assign a factor score to each individual, i.e. assign class membership
 
+## Load and preprocess
 
+```{r}
+# Read data
+mcdonalds <- read.csv("Data/mcdonalds.csv")
 
+# Look into content
+names(mcdonalds)
+dim(mcdonalds)
+head(mcdonalds, 3)
 
+# Change Yes/No to 1/0
+MD.x <- as.matrix(mcdonalds[, 1:11])
+MD.x <- (MD.x == "Yes") + 0
+```
 
+## Explore data
+
+```{r}
+# What fraction sees McDonald's possessing each of the attributes
+round(colMeans(MD.x), 2)
+# PCA and perceptual map
+MD.pca <- prcomp(MD.x)
+summary(MD.pca)
+print(MD.pca, digits = 1)
+plot(predict(MD.pca), col = "grey")
+projAxes(MD.pca)
+```
+## Extract segments with k-means
+
+```{r}
+set.seed(28)
+MD.km28 <- stepFlexclust(MD.x, 2:8, nrep = 10,verbose = FALSE)
+plot(MD.km28, xlab = "number of segments")
+
+## Segment stability within the same number of segments
+set.seed(1234)
+MD.b28 <- bootFlexclust(MD.x, 2:8, nrep = 10,nboot = 100)
+plot(MD.b28, xlab = "number of segments",ylab = "adjusted Rand index")
+
+## Gorge plot
+MD.km28 <- relabel(MD.km28)
+histogram(MD.km28[["4"]], data = MD.x, xlim = 0:1)
+
+## Segment level stability across solutions
+slsaplot(MD.km28)
+
+## Save the four-segment solution
+MD.k4 <- MD.km28[["4"]]
+MD.r4 <- slswFlexclust(MD.x, MD.k4)
+plot(MD.r4, ylim = 0:1, xlab = "segment number",ylab = "segment stability")
+```
+
+## Extract segments with mixture distribution
+
+So we have a k-means model from above (MD.k4).
+Now, we create two additional models:
+- MD.m4a
+- MD.m4
+
+The first (MD.m4a) is apparently based on the k-means model.
+The second (MD.m4) is also a mix-model.
+
+```{r}
+set.seed(1234)
+
+# Estimate a mixture of binary distributions for all possible number of segments between 2 and 8
+MD.m28 <- stepFlexmix(MD.x ~ 1, k = 2:8, nrep = 10, model = FLXMCmvbinary(), verbose = FALSE)
+MD.m28
+plot(MD.m28,ylab = "value of information criteria (AIC, BIC, ICL)")
+
+# We go with the solution where k = 4 since the BIC does not improve much after this point
+MD.m4 <- getModel(MD.m28, which = "4")
+
+# cross table suggests stability (for some reason) 
+# also notice that kmeans cluster 2 corresponds to mixture cluster 4, and kmeans 3 to mixture 2.
+table(kmeans = clusters(MD.k4),mixture = clusters(MD.m4))
+
+# Use the k-means solution as initialization values for the finite mixture model
+MD.m4a <- flexmix(MD.x ~1, cluster = clusters(MD.k4),model = FLXMCmvbinary())
+
+# Now they correspond to a larger degree
+table(kmeans = clusters(MD.k4),mixture = clusters(MD.m4a)) 
+
+# Similar log-likelihoods indicate we've found a global solution
+logLik(MD.m4a)
+logLik(MD.m4)
+```
 
