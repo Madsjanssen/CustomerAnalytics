@@ -5,6 +5,7 @@ date: "2024-06-02"
 output: html_document
 ---
 # Cluster Analysis
+
 ## Hierarchical and non-hierarchical cluster analysis.
 Key lessons from hierarchical and non-hierarchical cluster analysis:
   ▶ There is substantial ambiguity associated with:
@@ -32,17 +33,26 @@ HBAT <- read.dta13("Data/hbat.dta")
 ```
 
 ### Data Preparation
+
+- Pick variables
+- Summarize and inspect data
+- Outlier detection
+- Add ID row
+
 ```{r}
 # first we make our own id variable based on the original order
 nobs <- nrow(HBAT)
 HBAT$id <- seq(1,nobs)
+
 # pick the variables for cluster analysis and summarize them
 hbat <- c("x6","x8","x12","x15","x18")
 summary(HBAT[,hbat])
 apply(HBAT[,hbat],2,sd) # Get standard deviation of the variables
+
 # multicollinearity should not be a problem
 cor(HBAT[,hbat])
 # which is confirmed
+
 # look for outliers
 dev <- t(t(HBAT[,hbat])-apply(HBAT[,hbat],2,mean))
 dev2 <- dev^2
@@ -57,6 +67,29 @@ HBAT$id <- seq(1,nobs)
 ```
 
 ### Hierarchical clustering
+
+Hierarchical clustering relies on distance measures. We have covered two types:
+- Euclidian distance (shortest line to connect two dots)
+- Manhattan distance (mimics traveling across roads)
+
+We distinguish between two types of hierarchical methods:
+- Agglomerative: Objects start as their own cluster and are succesively joined until they are all connected
+- Divisive: Objects start in a single cluster and objects are succesively divided (rarely used)
+
+We can choose between different methods for linking two objects in the agglomerative method:
+
+- Single-linkage: Distance between two clusters is measured as the minimum distance between all pairs
+  - Finds unbalanced / straggly clusters
+  
+- Complete-linkage: Distance measured as the maximum distance between all pairs
+  - Finds compact clusters with equal diameters
+  
+- Average-linkage: Distance measured as the average distance between all pairs
+
+- Centroid-linkage: Calculate the average object (centroid) per cluster and use those for distance measures
+
+- Ward's method: Minimize the within-cluster sum-of-squares
+
 ```{r}
 # First, create a distance matrix using the Euclidean method for selected columns identified by 'hbat'.
 dist <- dist(HBAT[,hbat], method="euclidean")
@@ -65,12 +98,19 @@ dist2 <- dist^2
 ```
 
 #### Perform hierarchical clustering using Ward's method
+
+- Use Ward's method to obtain clusters
+- The algo continues until all observations are joined (i.e. forming one single cluster)
+- We need to determine the optimal number of clusters
+- One method: Use dendogram and look for the point where dissimilar clusters are joined
+
 ```{r}
 ## Perform hierarchical clustering using Ward's method, which minimizes the total within-cluster variance at each step.
 H.fit <- hclust(dist2, method="ward.D")
 
 # Plot the dendrogram to visualize the clustering hierarchy.
 plot(H.fit)
+
 # After inspecting the dendrogram, we determine that the data seems best divided into three or possibly four clusters.
 
 # Calculate the percentage increase in height at each cluster merge to help determine the optimal number of clusters.
@@ -110,6 +150,11 @@ summary(aov(x18 ~ grp, data=HBAT)) # Analyze variable x18
 ```
 
 #### Switch to complete linkage method
+
+- Use complete linkage method
+- Use dendogram method as previously
+- Compare methods
+
 ```{r}
 ## Switch to complete linkage method for hierarchical clustering using the original distance matrix.
 H.fit <- hclust(dist, method="complete")
@@ -128,8 +173,32 @@ tail(pct, n=10)  # Display the last 10 percentage increases.
 # Results from Ward's method are validated with complete linkage, noting differences in clustering.
 grp <- as.factor(cutree(H.fit, k=4))
 table(grp)  # Display the distribution of data points in the clusters.
+```
+#### Optimal number of clusters
 
+- Use NbClust() to search for optimal number of clusters
+- min.nc and max.nc determines search range
+
+```{r}
+# Use NbClust to determine the optimal number of clusters using a variety of indices and Ward's method.
+res <- NbClust(HBAT[,hbat], distance = "euclidean", min.nc=2, max.nc=8, 
+               method = "ward.D", index = "all")
+
+# Display all indices computed by NbClust and the recommended number of clusters. Interpretation???
+res$All.index
+res$Best.nc
+
+# Note: This conclusion is statistical and does not necessarily reflect the practical significance or domain-specific context of the data.
+```
+#### Plot solution
+
+- Plot dendograms together with final cluster choice
+- Aggregate variables based on group membership and look for differences
+- Check if group membership significantly predicts variables
+
+```{r}
 # Illustrate the 4-cluster solution with complete linkage, highlighting the clusters on the dendrogram.
+plot(H.fit)
 rect.hclust(H.fit, k=4, border="red")
 
 # Assess the outcome by computing the mean for each cluster with the new method.
@@ -142,29 +211,84 @@ summary(aov(x12 ~ grp, data=HBAT))
 summary(aov(x15 ~ grp, data=HBAT))
 summary(aov(x18 ~ grp, data=HBAT))
 # All variables are significant
+```
+#### Toy example
 
-# Use NbClust to determine the optimal number of clusters using a variety of indices and Ward's method.
-res <- NbClust(HBAT[,hbat], distance = "euclidean", min.nc=2, max.nc=8, 
-               method = "ward.D", index = "all")
+- Perform hierarchical clustering using different linkage methods
 
-# Display all indices computed by NbClust and the recommended number of clusters. Interpretation???
-res$All.index
-res$Best.nc
-# Note: This conclusion is statistical and does not necessarily reflect the practical significance or domain-specific context of the data.
+```{r}
+# Define income and education data for a toy dataset
+inc <- c(5, 6, 15, 16, 25, 30)
+edu <- c(5, 6, 14, 15, 20, 19)
+toy <- data.frame(inc, edu)
+
+# Calculate Euclidean distance between points
+toy.dist <- dist(toy, method="euclidean")
+
+# Square the distances for use in clustering algorithms that minimize variance
+toy.dist2 <- toy.dist^2
+
+# Perform hierarchical clustering using single linkage
+toy.H.single <- hclust(toy.dist2, method="single")
+
+# Output the merging sequence of clusters
+toy.H.single$merge
+
+# Output increases in distance at each merge point
+toy.H.single$height
+
+# Permutation of original observations suitable for plotting
+toy.H.single$order
+
+# Plot the dendrogram
+plot(toy.H.single)
+
+# Explore other linkage methods for comparison
+toy.H.complete <- hclust(toy.dist, method="complete")
+toy.H.average <- hclust(toy.dist, method="average")
+toy.H.centroid <- hclust(toy.dist, method="centroid")
+
+# Perform hierarchical clustering using Ward's method
+toy.H.ward <- hclust(toy.dist2, method="ward.D")
 ```
 
 ### Nonhierarchical Clustering
+
+Non-hierarchical clustering techniques are characterized by wanting to do two things:
+- Maximise intra-class similarity
+- Minimize inter-class similarity
+
+Two key differences between hierarchical and non-hierarchical clustering:
+1) In non-h we must know number of clusters (k) a priori
+2) In non-h once an object is assigned a cluster it can be reassigned later
+
+#### K-means clustering
+
+Could look like this:
+
+1) Choose number of clusters, k
+2) Initialize k (sometimes randomly chosen) centroids / prototypes
+3) Assign all objects to closest centroid
+4) Calculate new centroids
+5) Assign all objects to closest centroid
+6) Calculate new centroids
+Repeat until convergence
+
+Algorithms differ in how the initial centroids are chosen, and if objects are assigned to a random centroid initially.
+
 ```{r}
 # Set a random seed to ensure reproducibility of the k-means clustering results
 set.seed(4118)
 
 # Perform k-means clustering on selected columns with 4 clusters and 25 random starts to ensure convergence to a good solution
 NH.fit <- kmeans(HBAT[,hbat], 4, nstart=25)
+
 # Print the results of the k-means clustering to see the cluster centers and size
 print(NH.fit)
 
 # Extract the cluster assignments for each observation and convert it into a factor
 grp <- as.factor(NH.fit[[1]])
+
 # Display a table to see the number of observations in each cluster
 table(grp)
 
@@ -185,6 +309,7 @@ matplot(t(NH.fit[[2]]), type="l")
 
 # Check criterion validity by assessing mean values of additional variables within each cluster
 aggregate(HBAT[,c("x19","x20","x21","x22")], list(grp), mean)
+
 # Perform ANOVA for these variables as well to check significant differences
 summary(aov(x19 ~ grp, data=HBAT))
 summary(aov(x20 ~ grp, data=HBAT))
@@ -194,8 +319,10 @@ summary(aov(x22 ~ grp, data=HBAT))
 
 # Profile the clusters based on categorical variables and test statistical independence
 tbl <- table(HBAT$x1, grp)
+
 # Convert the count table to a percentage table for better interpretation
 round(100 * prop.table(tbl, 2))
+
 # Perform chi-square test to see if distribution of x1 is independent of cluster assignment
 chisq.test(tbl)
 
@@ -214,38 +341,6 @@ round(100 * prop.table(tbl, 2))
 chisq.test(tbl)
 ```
 
-### Toy example
-```{r}
-## Toy example for demonstrating hierarchical clustering
-# Define income and education data for a toy dataset
-inc <- c(5, 6, 15, 16, 25, 30)
-edu <- c(5, 6, 14, 15, 20, 19)
-toy <- data.frame(inc, edu)
-
-# Calculate Euclidean distance between points
-toy.dist <- dist(toy, method="euclidean")
-# Square the distances for use in clustering algorithms that minimize variance
-toy.dist2 <- toy.dist^2
-
-# Perform hierarchical clustering using single linkage
-toy.H.single <- hclust(toy.dist2, method="single")
-# Output the merging sequence of clusters
-toy.H.single$merge
-# Output increases in distance at each merge point
-toy.H.single$height
-# Permutation of original observations suitable for plotting
-toy.H.single$order
-# Plot the dendrogram
-plot(toy.H.single)
-
-# Explore other linkage methods for comparison
-toy.H.complete <- hclust(toy.dist, method="complete")
-toy.H.average <- hclust(toy.dist, method="average")
-toy.H.centroid <- hclust(toy.dist, method="centroid")
-# Perform hierarchical clustering using Ward's method
-toy.H.ward <- hclust(toy.dist2, method="ward.D")
-```
-
 ### Distance vs shape
 ```{r}
 scores<-matrix(c(21,34,17,42,62,75,58,85),nrow=4,byrow=F)
@@ -255,11 +350,13 @@ cor(scores)
 ```
 
 ## Model-based clustering
+
   ▶ Model-based clustering assumes that the population is made up of several distinct subsets/clusters, each          governed by a different multivariate probability density function
   ▶ The parameters associated with the model can be used to assign each observation a posterior probability of        belonging to a cluster
   ▶ The problems of identifying the number of clusters and selecting the clustering method boil down to a model       selection problem – for which we have a number of procedures
 
-R script for the analysis of the HBAT example in the model-based clustering lecture
+R script for the analysis of the HBAT example in the model-based clustering lecture.
+
 ### Data prep
 ```{r}
 # Data prep is just like previously
@@ -323,9 +420,23 @@ mc4 <- Mclust(HBAT[, hbat], G=4)  # G=4 specifies that the model should consider
 summary(mc4)
 ```
 
-# Segmentation
-## R script for the analysis of the McDonald's example in the segmentation lecture
-### Load packages and data
+# Reproducability
+
+Solutions are dependent on two things:
+- The sample
+- The algorithm 
+
+We can view both of these as random variables. 
+- The sample is a random subset of the population
+- The algorithm is often stochastic (e.g. different starting points for k-means centroids)
+
+So how do we make sure that our cluster solution is reliable and not an artifact of this randomness?
+The answer, according to the readings, is using bootstrapping. Through this, we can calculate stability measures such as:
+- Rand index
+- Adjusted Rand index
+- Many more
+
+## Load packages and data
 ```{r}
 library("flexclust")
 # install.package(clue) - should be installed as part of the flexclust but isn't
@@ -335,7 +446,8 @@ rm(list=ls())
 # Read in data
 mcdonalds <- read.csv("Data/mcdonalds.csv")
 ```
-### Data preprocessing
+
+## Data preprocessing
 ```{r}
 # Look into content
 names(mcdonalds)
@@ -357,10 +469,38 @@ print(MD.pca, digits = 1)           # Print the PCA object with results rounded 
 plot(predict(MD.pca), col = "grey") # Plot the scores of the PCA, color points in grey
 
 projAxes(MD.pca)  # Plot projection axes on the PCA plot
-
 ```
 
-### Extracting segments with k-means
+## Bootstrapping
+
+- First, test different solutions
+- Then, apply bootstrapping to measure stability
+
+After bootstrapping, we will have 100 solutions per number of clusters.
+So, we will have 100 solutions with only 2 clusters. 100 with 3 clusters. Etc.
+We can, per number of clusters, calculate the similarity across the 100 solutions.
+
+Rand index:
+- Is a measure of agreement between solutions
+- Lets say we only compare two solutions, C1 and C2. For a given object (here, consumer) four things can happen:
+  a. Both consumers are assigned to the same segment twice
+  b. The two consumers are in the same segment in C1(·) but not in C2(·) 
+  c. The two consumers are in the same segment in C2(·) but not in C1(·) 
+  d. The two consumers are assigned to different segments twice
+- The Rand index equals:
+$$R = \frac{a+d}{a+b+c+d}$$
+Adjusted Rand index:
+- The Rand index depends on the size of extracted segments, so the adjustment corrects for this.
+- If the adjusted index equals 1: Total agreement
+- If the adjusted index equals 1: Agreement equals chance agreement (expected index)
+$$R_c=\frac{\text{index-expected index}}{\text{maximum index - expected index}}$$
+
+Gorge plot: 
+- We want to see many low and many high similarity measures, indicating well-separated segments
+- Example of Natural segmentation and therefore "good" Gorge Plot:
+
+![Gorge Plot](Attachments/Gorge_Plot.png)
+
 ```{r}
 set.seed(28)
 
@@ -395,11 +535,12 @@ MD.k4 <- MD.km28[["4"]]
 
 # Analyze segment-level stability within the four-segment solution using silhouette widths
 MD.r4 <- slswFlexclust(MD.x, MD.k4)
+
 # Plot the segment stability for each segment in the four-segment solution
 plot(MD.r4, ylim = 0:1, xlab = "segment number", ylab = "segment stability")
 ```
 
-### Profiling segments
+## Profiling segments
 ```{r}
 # Perform hierarchical clustering on MD.x to cluster the variables rather than the observations. This can help in understanding how different attributes group together.
 MD.vclust <- hclust(dist(t(MD.x)))
@@ -416,7 +557,8 @@ plot(MD.k4, project = MD.pca, data = MD.x, hull = FALSE, simlines = FALSE,
 # This helps in understanding the orientation and significance of the components in the clustering context.
 projAxes(MD.pca)
 ```
-### Describing segments
+
+## Describing segments
 ```{r}
 # Extract the segment membership for each consumer from the clustering results and add it as a new column in the 'mcdonalds' dataframe
 mcdonalds$k4 <- clusters(MD.k4)
@@ -438,7 +580,7 @@ boxplot(mcdonalds$Age ~ mcdonalds$k4, varwidth = TRUE, notch = TRUE,
         main = "Age Distribution by Segment", xlab = "Segment", ylab = "Age")
 ```
 
-### Predict a segment
+## Predict a segment
 ```{r}
 # Predict segment 3 membership using a classification tree
 # Recode 'VisitFrequency' into a categorical variable with specific levels
@@ -454,7 +596,7 @@ tree <- ctree(factor(k4 == 3) ~ like + Age + visitfrequency + factor(Gender),
 plot(tree, main = "Classification Tree for Segment 3 Membership")
 ```
 
-### Selecting (the) target segment(s)
+## Selecting (the) target segment(s)
 ```{r}
 # Calculate the mean visit frequency for each segment.
 # The visit frequency is recoded as numeric from 1 (Never) to 6 (More than once a week).
