@@ -700,11 +700,11 @@ plot(MD.r4, ylim = 0:1, xlab = "segment number",ylab = "segment stability")
 
 So we have a k-means model from above (MD.k4).
 Now, we create two additional models:
-- MD.m4a
 - MD.m4
+- MD.m4a
 
-The first (MD.m4a) is apparently based on the k-means model.
-The second (MD.m4) is also a mix-model.
+The first (MD.m4a) is a mixture model.
+The second (MD.m4a) is also a mixture model initialized with parameters from the k-means model.
 
 ```{r}
 set.seed(1234)
